@@ -1,16 +1,17 @@
 package main
 
-import(
+import (
 	"./goMapReduce"
-	"strings"
 	"fmt"
+	"strings"
+	"sync"
 )
 
 type MyMapReduce struct {
 	reduceCriticalValue int
 }
 
-func (mr *MyMapReduce) CustomMap(mapData interface{}, mapOutChannel chan goMapReduce.MRChanData){
+func (mr *MyMapReduce) CustomMap(mapData interface{}, mapOutChannel chan goMapReduce.MRChanData) {
 	str := mapData.(string)
 	tokens := strings.Fields(str)
 
@@ -24,12 +25,11 @@ func (mr *MyMapReduce) CustomMap(mapData interface{}, mapOutChannel chan goMapRe
 	}
 }
 
-func (mr *MyMapReduce) CustomReduce(key string, values []interface{}, reduceOutChannel chan goMapReduce.MRChanData){
+func (mr *MyMapReduce) CustomReduce(key string, values []interface{}, reduceOutChannel chan goMapReduce.MRChanData) {
 	reduceOutChannel <- goMapReduce.MRChanData{key, len(values)}
 }
 
-
-func writeInTaskData(mapInChannel chan goMapReduce.MRChanData){
+func writeInTaskData(mapInChannel chan goMapReduce.MRChanData) {
 	taskData := map[string]string{
 		"task1": "primer trozo de informacion para procesado primer trozo",
 		"task2": "segundo trozo de informacion trozo de",
@@ -46,8 +46,12 @@ func writeInTaskData(mapInChannel chan goMapReduce.MRChanData){
 	close(mapInChannel)
 }
 
+func handleResult(kv goMapReduce.MRChanData) {
+	fmt.Printf("[%s, %d], word: %s appear %d times.\n", kv.Key, kv.Value.(int), kv.Key, kv.Value.(int))
+}
+
 func main() {
-	myMapReduce := MyMapReduce{reduceCriticalValue: 10}
+	myMapReduce := MyMapReduce{reduceCriticalValue: 5000}
 
 	gmr := goMapReduce.NewMapReduce(&myMapReduce, myMapReduce.reduceCriticalValue)
 
@@ -60,8 +64,16 @@ func main() {
 	//write task in channel
 	go writeInTaskData(mapInChannel)
 	//read result from channel
+	var resultWaitGroup sync.WaitGroup
 	for kv := range reduceOutChannel {
-		fmt.Printf("[%s, %d], word: %s appear %d times.\n", kv.Key, kv.Value.(int), kv.Key, kv.Value.(int))
+		//run handleResult function concurrency
+		go func(kvPair goMapReduce.MRChanData) {
+			resultWaitGroup.Add(1)
+			handleResult(kvPair)
+			resultWaitGroup.Done()
+		}(kv)
 	}
-	fmt.Println("Count Word program done!");
+	//when all result has been handled, exit
+	resultWaitGroup.Wait()
+	fmt.Println("Count Word program done!")
 }
