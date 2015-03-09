@@ -4,7 +4,6 @@ import (
 	"./goMapReduce"
 	"fmt"
 	"strings"
-	"sync"
 )
 
 type MyMapReduce struct {
@@ -64,16 +63,9 @@ func main() {
 	//write task in channel
 	go writeInTaskData(mapInChannel)
 	//read result from channel
-	var resultWaitGroup sync.WaitGroup
 	for kv := range reduceOutChannel {
-		//run handleResult function concurrency
-		go func(kvPair goMapReduce.MRChanData) {
-			resultWaitGroup.Add(1)
-			handleResult(kvPair)
-			resultWaitGroup.Done()
-		}(kv)
+		handleResult(kv)
 	}
 	//when all result has been handled, exit
-	resultWaitGroup.Wait()
 	fmt.Println("Count Word program done!")
 }
