@@ -1,6 +1,7 @@
 package goMapReduce
 
 import (
+	"runtime"
 	"sync"
 )
 
@@ -50,14 +51,17 @@ func (mapReduce *MapReduce) GetreduceOutChannel() (mapInChannel chan MRChanData)
 
 func (mapReduce *MapReduce) ListenMapIn() {
 	var mapWaitGroup sync.WaitGroup
-	for mapInData := range mapReduce.mapInChannel {
-		go func(mapData interface{}, mapOutChannel chan MRChanData) {
-			mapWaitGroup.Add(1)
-			(*mapReduce.customMapReduce).CustomMap(mapData, mapOutChannel)
+	// start NumOfCPU goroutines do map
+	for i := 0; i < runtime.NumCPU(); i++ {
+		mapWaitGroup.Add(1)
+		go func() {
+			for mapInData := range mapReduce.mapInChannel {
+				(*mapReduce.customMapReduce).CustomMap(mapInData.Value, mapReduce.mapOutChannel)
+			}
 			mapWaitGroup.Done()
-		}(mapInData.Value, mapReduce.mapOutChannel)
+		}()
 	}
-	//when all mapper goroutine done close mapOut channel
+	//when all map task done close mapOut channel
 	mapWaitGroup.Wait()
 	close(mapReduce.mapOutChannel)
 }
@@ -80,12 +84,15 @@ func (mapReduce *MapReduce) aggregateMapOut() {
 
 func (mapReduce *MapReduce) ListenReduceIn() {
 	var reduceWaitGroup sync.WaitGroup
-	for reduceInData := range mapReduce.reduceInChannel {
-		go func(key string, values []interface{}, reduceOutChannel chan MRChanData) {
-			reduceWaitGroup.Add(1)
-			(*mapReduce.customMapReduce).CustomReduce(key, values, reduceOutChannel)
+	// start NumOfCPU goroutines to do reduce
+	for i := 0; i < runtime.NumCPU(); i++ {
+		reduceWaitGroup.Add(1)
+		go func() {
+			for reduceInData := range mapReduce.reduceInChannel {
+				(*mapReduce.customMapReduce).CustomReduce(reduceInData.Key, reduceInData.Value.([]interface{}), mapReduce.reduceOutChannel)
+			}
 			reduceWaitGroup.Done()
-		}(reduceInData.Key, reduceInData.Value.([]interface{}), mapReduce.reduceOutChannel)
+		}()
 	}
 	//when all reducer goroutine done close reduceOut channel
 	reduceWaitGroup.Wait()
