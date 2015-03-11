@@ -1,7 +1,6 @@
 package goMapReduce
 
 import (
-	"runtime"
 	"sync"
 )
 
@@ -26,17 +25,21 @@ type MapReduce struct {
 	aggregate map[string][]interface{}
 	//reduce start Critical Value
 	reduceCriticalValue int
+	maxMapperNum        int
+	maxReducerNum       int
 }
 
-func NewMapReduce(uc UserCustomMapReduce, reduceCriticalValue int) *MapReduce {
+func NewMapReduce(uc UserCustomMapReduce, reduceCriticalValue int, maxMapper int, maxReducer int) *MapReduce {
 	mapReduce := &MapReduce{
 		mapInChannel:        make(chan MRChanData),
 		mapOutChannel:       make(chan MRChanData),
 		reduceInChannel:     make(chan MRChanData),
 		reduceOutChannel:    make(chan MRChanData),
-		customMapReduce:     &uc,
 		aggregate:           make(map[string][]interface{}),
+		customMapReduce:     &uc,
 		reduceCriticalValue: reduceCriticalValue,
+		maxMapperNum:        maxMapper,
+		maxReducerNum:       maxReducer,
 	}
 	return mapReduce
 }
@@ -51,8 +54,8 @@ func (mapReduce *MapReduce) GetreduceOutChannel() (mapInChannel chan MRChanData)
 
 func (mapReduce *MapReduce) ListenMapIn() {
 	var mapWaitGroup sync.WaitGroup
-	// start NumOfCPU goroutines do map
-	for i := 0; i < runtime.NumCPU(); i++ {
+	// start X goroutines do map
+	for i := 0; i < mapReduce.maxMapperNum; i++ {
 		mapWaitGroup.Add(1)
 		go func() {
 			for mapInData := range mapReduce.mapInChannel {
@@ -74,7 +77,7 @@ func (mapReduce *MapReduce) aggregateMapOut() {
 		}
 		mapReduce.aggregate[mapOutData.Key] = append(mapReduce.aggregate[mapOutData.Key], mapOutData.Value)
 	}
-
+	//when mapOutChannel close,send the rest of data to do reduce
 	for k := range mapReduce.aggregate {
 		mapReduce.reduceInChannel <- MRChanData{k, mapReduce.aggregate[k]}
 	}
@@ -84,8 +87,8 @@ func (mapReduce *MapReduce) aggregateMapOut() {
 
 func (mapReduce *MapReduce) ListenReduceIn() {
 	var reduceWaitGroup sync.WaitGroup
-	// start NumOfCPU goroutines to do reduce
-	for i := 0; i < runtime.NumCPU(); i++ {
+	// start X goroutines to do reduce
+	for i := 0; i < mapReduce.maxReducerNum; i++ {
 		reduceWaitGroup.Add(1)
 		go func() {
 			for reduceInData := range mapReduce.reduceInChannel {
