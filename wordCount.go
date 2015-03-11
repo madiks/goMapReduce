@@ -3,6 +3,7 @@ package main
 import (
 	"./goMapReduce"
 	"fmt"
+	"runtime"
 	"strings"
 )
 
@@ -41,7 +42,7 @@ func writeInTaskData(mapInChannel chan goMapReduce.MRChanData) {
 	for k := range taskData {
 		mapInChannel <- goMapReduce.MRChanData{k, taskData[k]}
 	}
-
+	//when all task data has been input,close mapInChannel
 	close(mapInChannel)
 }
 
@@ -50,9 +51,11 @@ func handleResult(kv goMapReduce.MRChanData) {
 }
 
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
 	myMapReduce := MyMapReduce{reduceCriticalValue: 5000}
 
-	gmr := goMapReduce.NewMapReduce(&myMapReduce, myMapReduce.reduceCriticalValue)
+	gmr := goMapReduce.NewMapReduce(&myMapReduce, myMapReduce.reduceCriticalValue, runtime.NumCPU(), runtime.NumCPU())
 
 	mapInChannel := gmr.GetMapInChannel()
 
