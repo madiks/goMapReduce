@@ -54,14 +54,15 @@ func (varMapReduce *mapReduce) GetreduceOutChannel() (mapInChannel chan MRChanDa
 
 func (varMapReduce *mapReduce) listenMapIn() {
 	var mapWaitGroup sync.WaitGroup
-	// start X goroutines do map
-	for i := 0; i < varMapReduce.maxMapperNum; i++ {
+	tokens := make(chan int, varMapReduce.maxMapperNum)
+	for mapInData := range varMapReduce.mapInChannel {
+		//when get task data from channel, try get token, if success start one mapper, else wait other mapper quit, max mapper count is maxMapperNum
+		tokens <- 1
 		mapWaitGroup.Add(1)
 		go func() {
-			for mapInData := range varMapReduce.mapInChannel {
-				(*varMapReduce.customMapReduce).CustomMap(mapInData.Value, varMapReduce.mapOutChannel)
-			}
+			(*varMapReduce.customMapReduce).CustomMap(mapInData.Value, varMapReduce.mapOutChannel)
 			mapWaitGroup.Done()
+			<-tokens
 		}()
 	}
 	//when all map task done close mapOut channel
@@ -87,14 +88,15 @@ func (varMapReduce *mapReduce) aggregateMapOut() {
 
 func (varMapReduce *mapReduce) listenReduceIn() {
 	var reduceWaitGroup sync.WaitGroup
-	// start X goroutines to do reduce
-	for i := 0; i < varMapReduce.maxReducerNum; i++ {
+	tokens := make(chan int, varMapReduce.maxReducerNum)
+	for reduceInData := range varMapReduce.reduceInChannel {
+		//when get task data from channel, try get token, if success start one reducer, else wait other reducer quit, max reducer count is maxReducerNum
+		tokens <- 1
 		reduceWaitGroup.Add(1)
 		go func() {
-			for reduceInData := range varMapReduce.reduceInChannel {
-				(*varMapReduce.customMapReduce).CustomReduce(reduceInData.Key, reduceInData.Value.([]interface{}), varMapReduce.reduceOutChannel)
-			}
+			(*varMapReduce.customMapReduce).CustomReduce(reduceInData.Key, reduceInData.Value.([]interface{}), varMapReduce.reduceOutChannel)
 			reduceWaitGroup.Done()
+			<-tokens
 		}()
 	}
 	//when all reducer goroutine done close reduceOut channel
